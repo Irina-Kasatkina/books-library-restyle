@@ -24,7 +24,7 @@ def download_books():
         ):
             continue
 
-        print(f'\n{title}\n')
+        print(f'\nЗаголовок: {title}')
         title = f'{book_number}. {title}'
         # filepath = download_txt(text_url, title)
 
@@ -34,8 +34,11 @@ def download_books():
         # ):
         #     downloaded_urls.add(image_url)
 
-        if comments := parsed_book_page.get('comments'):
-            print(*comments, sep='\n')
+        # if comments := parsed_book_page.get('comments'):
+        #     print(*comments, sep='\n')
+
+        if genres := parsed_book_page.get('genres'):
+            print(genres)
 
 
 def download_file(url: str, filename: str, folder: str) -> str:
@@ -113,7 +116,7 @@ def parse_book_page(url: str) -> dict:
 
     soup = BeautifulSoup(response.text, 'lxml')
     title, image_url, text_url = ('', '', '')
-    comments = []
+    comments, genres = [], []
 
     if title_tag := soup.find('div', id='content').find('h1'):
         title = title_tag.text.split('::')[0].strip()
@@ -127,8 +130,11 @@ def parse_book_page(url: str) -> dict:
     if comments_tags := soup.find_all('div', class_='texts'):
         comments = [tag.find('span', class_='black').text for tag in comments_tags]
         
+    if genres_span_tag := soup.find('span', class_='d_book'):
+        genres = [tag.text for tag in genres_span_tag.find_all('a')]
+
     return {'title': title, 'text_url': text_url, 'image_url': image_url,
-            'comments': comments}
+            'comments': comments, 'genres': genres}
 
 
 def main():
