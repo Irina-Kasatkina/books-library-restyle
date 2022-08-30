@@ -1,3 +1,4 @@
+import argparse
 import os
 from pathlib import Path
 from urllib.parse import unquote, urljoin, urlsplit
@@ -12,11 +13,26 @@ def check_for_redirect(response):
         raise requests.HTTPError()
 
 
-def download_books():
+def create_parser():
+    """ Создаёт парсер параметров командной строки. """
+
+    parser = argparse.ArgumentParser(
+            description='Скачивает с сайта tululu.org тексты книг в подпапку books, '
+                        'а обложки книг в подпапку images '
+                        'для книг c номерами из указанного диапазона.'
+    )
+    parser.add_argument('-s', '--start_id', type=int, default=1,
+                        help='номер книги, начиная с которого происходит скачивание')
+    parser.add_argument('-e', '--end_id', type=int, default=0,
+                        help='номер книги, по который происходит скачивание')
+    return parser
+
+
+def download_books(start_id: int, end_id: int):
     url = 'https://tululu.org'
     downloaded_urls = set()
 
-    for book_number in range(1, 11):
+    for book_number in range(start_id, end_id+1):
         book_url = f'{url}/b{book_number}/'
         if (not (response_content := read_html_page(book_url)) or
             not (parsed_book_page := parse_book_page(response_content)) or
@@ -28,7 +44,7 @@ def download_books():
 
         print(f'\nЗаголовок: {title}')
         title = f'{book_number}. {title}'
-        # filepath = download_txt(text_url, title)
+        filepath = download_txt(text_url, title)
 
         if ((image_url := parsed_book_page.get('image_url')) and
             (image_url := urljoin(book_url, image_url)) and
@@ -37,8 +53,8 @@ def download_books():
         ):
             downloaded_urls.add(image_url)
 
-        # if comments := parsed_book_page.get('comments'):
-        #     print(*comments, sep='\n')
+        if comments := parsed_book_page.get('comments'):
+            print(*comments, sep='\n')
 
         if genres := parsed_book_page.get('genres'):
             print(genres)
@@ -142,7 +158,19 @@ def read_html_page(url: str) -> str:
 
 
 def main():
-    download_books()
+    parser = create_parser()
+    args = parser.parse_args()
+
+    if not (start_id := args.start_id):
+        start_id = 1
+
+    if end_id := args.end_id:
+        if start_id > end_id:
+            start_id, end_id = end_id, start_id
+    else:
+        end_id = start_id
+
+    download_books(start_id, end_id)
 
 
 if __name__ == '__main__':
