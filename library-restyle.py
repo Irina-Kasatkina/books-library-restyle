@@ -18,22 +18,24 @@ def download_books():
 
     for book_number in range(1, 11):
         book_url = f'{url}/b{book_number}/'
-        if (not (book_dict := parse_book_page(book_url)) or
-            not (text_url := book_dict.get('text_url')) or
-            not (book_title := book_dict.get('book_title'))
+        if (not (parsed_book_page := parse_book_page(book_url)) or
+            not (text_url := parsed_book_page.get('text_url')) or
+            not (title := parsed_book_page.get('title'))
         ):
             continue
 
-        book_title = f'{book_number}. {book_title}'
-        filepath = download_txt(text_url, book_title)
+        print(f'\n{title}\n')
+        title = f'{book_number}. {title}'
+        # filepath = download_txt(text_url, title)
 
-        if (not (image_url := book_dict.get('image_url')) or
-            (image_url in downloaded_urls) or
-            not download_image(image_url)
-        ):
-            continue
+        # if ((image_url := parsed_book_page.get('image_url')) and
+        #     (image_url not in downloaded_urls) and
+        #     download_image(image_url)
+        # ):
+        #     downloaded_urls.add(image_url)
 
-        downloaded_urls.add(image_url)
+        if comments := parsed_book_page.get('comments'):
+            print(*comments, sep='\n')
 
 
 def download_file(url: str, filename: str, folder: str) -> str:
@@ -110,18 +112,23 @@ def parse_book_page(url: str) -> dict:
         return {}
 
     soup = BeautifulSoup(response.text, 'lxml')
-    book_title, image_url, text_url = ('', '', '')
+    title, image_url, text_url = ('', '', '')
+    comments = []
 
-    if book_title_tag := soup.find('div', id='content').find('h1'):
-        book_title = book_title_tag.text.split('::')[0].strip()
+    if title_tag := soup.find('div', id='content').find('h1'):
+        title = title_tag.text.split('::')[0].strip()
 
     if text_url_tag := soup.find('table', class_='d_book').find('a', text='скачать txt'):
         text_url = urljoin(url, text_url_tag['href'])
 
     if image_url_tag := soup.find('div', class_='bookimage').find('img'):
         image_url = urljoin(url, image_url_tag['src'])
+
+    if comments_tags := soup.find_all('div', class_='texts'):
+        comments = [tag.find('span', class_='black').text for tag in comments_tags]
         
-    return {'book_title': book_title, 'text_url': text_url, 'image_url': image_url}
+    return {'title': title, 'text_url': text_url, 'image_url': image_url,
+            'comments': comments}
 
 
 def main():
