@@ -9,6 +9,8 @@ import requests
 
 
 def check_for_redirect(response):
+    """ Поднимает исключение, если при requests-запросе происходит редирект. """
+
     if response.history:
         raise requests.HTTPError()
 
@@ -29,6 +31,8 @@ def create_parser():
 
 
 def download_books(start_id: int, end_id: int):
+    """ Загружает тексты и картинки обложек книг с сайта tululu.org. """
+
     url = 'https://tululu.org'
     downloaded_urls = set()
 
@@ -39,7 +43,7 @@ def download_books(start_id: int, end_id: int):
             not (text_url := parsed_book_page.get('text_url')) or
             not (text_url := urljoin(book_url, text_url)) or
             not (title := parsed_book_page.get('title'))
-        ):
+           ):
             continue
 
         print(f'\nЗаголовок: {title}')
@@ -50,7 +54,7 @@ def download_books(start_id: int, end_id: int):
             (image_url := urljoin(book_url, image_url)) and
             (image_url not in downloaded_urls) and
             download_image(image_url)
-        ):
+           ):
             downloaded_urls.add(image_url)
 
         if comments := parsed_book_page.get('comments'):
@@ -61,10 +65,10 @@ def download_books(start_id: int, end_id: int):
 
 
 def download_file(url: str, filename: str, folder: str) -> str:
-    """Функция для скачивания файлов.
+    """Функция для скачивания одной html-страницы в файл на диске.
     Args:
         url (str): Cсылка на файл, который хочется скачать.
-        text_title (str): Название файла, с которым сохранять.
+        filename (str): Название файла, с которым сохранять.
         folder (str): Папка, куда сохранять.
     Returns:
         str: Путь до файла, куда сохранён текст.
@@ -93,7 +97,7 @@ def download_image(url: str, folder: str = 'images/') -> str:
     """
 
     filename = get_filename_from_url(url)
-    filepath =  download_file(url, filename, folder)
+    filepath = download_file(url, filename, folder)
     return filepath
 
 
@@ -108,7 +112,7 @@ def download_txt(url: str, text_title: str, folder: str = 'books/') -> str:
     """
 
     filename = f'{text_title}.txt'
-    filepath =  download_file(url, filename, folder)
+    filepath = download_file(url, filename, folder)
     return filepath
 
 
@@ -123,6 +127,8 @@ def get_filename_from_url(url):
 
 
 def parse_book_page(response_content: str) -> dict:
+    """ Парсит контент страницы книги с сайта tululu.org. """
+
     soup = BeautifulSoup(response_content, 'lxml')
     title, image_url, text_url = ('', '', '')
     comments, genres = [], []
@@ -138,7 +144,7 @@ def parse_book_page(response_content: str) -> dict:
 
     if comments_tags := soup.find_all('div', class_='texts'):
         comments = [tag.find('span', class_='black').text for tag in comments_tags]
-        
+
     if genres_span_tag := soup.find('span', class_='d_book'):
         genres = [tag.text for tag in genres_span_tag.find_all('a')]
 
@@ -147,6 +153,8 @@ def parse_book_page(response_content: str) -> dict:
 
 
 def read_html_page(url: str) -> str:
+    """ Читает html-страницу и возвращает response.content. """
+
     response = requests.get(url)
     response.raise_for_status()
 
