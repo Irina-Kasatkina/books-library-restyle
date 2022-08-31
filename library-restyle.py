@@ -1,6 +1,8 @@
 import argparse
 import os
 from pathlib import Path
+import sys
+import time
 from urllib.parse import unquote, urljoin, urlsplit
 
 from bs4 import BeautifulSoup
@@ -30,90 +32,80 @@ def create_parser():
     return parser
 
 
+def download_book(book_id: int):
+    """ Загружает текст и картинку обложки указанной книги с сайта tululu.org. """
+
+    book_url = f'https://tululu.org/b{book_id}/'
+    response = requests.get(book_url)
+    response.raise_for_status()
+    check_for_redirect(response)
+
+    try:
+        book_details = parse_book_page(response.content)
+    except AttributeError:
+        print(f'Не удалось распарсить страницу {book_url} книги с номером {book_id}.')
+        return
+
+    title = book_details.get('title')
+    text_url = book_details.get('text_url')
+    if text_url:
+        text_url = urljoin(book_url, text_url)
+        text_filename = f'{book_id}. {title}.txt'
+        text_folder = 'books/'
+        download_file(text_url, text_filename, text_folder)
+    else:
+        print(
+            f'Книга с номером {book_id} ("{title}") не загружена, '
+            'так как на сайте её текст отсутствует.',
+            file=sys.stderr
+        )
+
+    image_url = book_details.get('image_url')
+    if image_url:
+        image_url = urljoin(book_url, image_url)
+        image_filename = get_filename_from_url(image_url)
+        image_folder = 'images/'
+        download_file(image_url, image_filename, image_folder)
+
+
 def download_books(start_id: int, end_id: int):
     """ Загружает тексты и картинки обложек книг с сайта tululu.org. """
 
-    url = 'https://tululu.org'
-    downloaded_urls = set()
-
-    for book_number in range(start_id, end_id+1):
-        book_url = f'{url}/b{book_number}/'
-        if (not (response_content := read_html_page(book_url)) or
-            not (parsed_book_page := parse_book_page(response_content)) or
-            not (text_url := parsed_book_page.get('text_url')) or
-            not (text_url := urljoin(book_url, text_url)) or
-            not (title := parsed_book_page.get('title'))
-           ):
-            continue
-
-        print(f'\nЗаголовок: {title}')
-        title = f'{book_number}. {title}'
-        filepath = download_txt(text_url, title)
-
-        if ((image_url := parsed_book_page.get('image_url')) and
-            (image_url := urljoin(book_url, image_url)) and
-            (image_url not in downloaded_urls) and
-            download_image(image_url)
-           ):
-            downloaded_urls.add(image_url)
-
-        if comments := parsed_book_page.get('comments'):
-            print(*comments, sep='\n')
-
-        if genres := parsed_book_page.get('genres'):
-            print(genres)
+    for book_id in range(start_id, end_id+1):
+        while True:
+            try:
+                download_book(book_id)
+            except requests.HTTPError:
+                print(
+                    'Возникла ошибка HTTPError. '
+                    f'Возможно, книга c номером {book_id} отсутствует на сайте.',
+                    file=sys.stderr
+                )
+            except requests.exceptions.ConnectionError:
+                print(
+                    f'При загрузке книги с номером {book_id} '
+                    'возникла ошибка соединения с сайтом.',
+                    file=sys.stderr
+                )
+                time.sleep(30)
+                continue
+            break
 
 
-def download_file(url: str, filename: str, folder: str) -> str:
-    """Функция для скачивания одной html-страницы в файл на диске.
-    Args:
-        url (str): Cсылка на файл, который хочется скачать.
-        filename (str): Название файла, с которым сохранять.
-        folder (str): Папка, куда сохранять.
-    Returns:
-        str: Путь до файла, куда сохранён текст.
-    """
+def download_file(url: str, filename: str, folder: str):
+    """ Скачивает файл с указанным url на локальный диск. """
 
-    if not (response_content := read_html_page(url)):
-        return ''
+    response = requests.get(url)
+    response.raise_for_status()
+
+    check_for_redirect(response)
 
     dirpath = Path.cwd() / folder
     Path(dirpath).mkdir(parents=True, exist_ok=True)
 
     filepath = dirpath / sanitize_filename(filename)
     with open(filepath, "wb") as file:
-        file.write(response_content)
-
-    return filepath
-
-
-def download_image(url: str, folder: str = 'images/') -> str:
-    """Функция для скачивания файлов с изображениями.
-    Args:
-        url (str): Cсылка на изображение, которое хочется скачать.
-        folder (str): Папка, куда сохранять.
-    Returns:
-        str: Путь до файла, куда сохранено изображение.
-    """
-
-    filename = get_filename_from_url(url)
-    filepath = download_file(url, filename, folder)
-    return filepath
-
-
-def download_txt(url: str, text_title: str, folder: str = 'books/') -> str:
-    """Функция для скачивания текстовых файлов.
-    Args:
-        url (str): Cсылка на текст, который хочется скачать.
-        text_title (str): Заголовок текста (файл сохраняется с именем text_title + '.txt'.
-        folder (str): Папка, куда сохранять.
-    Returns:
-        str: Путь до сохранённого файла.
-    """
-
-    filename = f'{text_title}.txt'
-    filepath = download_file(url, filename, folder)
-    return filepath
+        file.write(response.content)
 
 
 def get_filename_from_url(url):
@@ -121,48 +113,34 @@ def get_filename_from_url(url):
 
     url_filepath = urlsplit(url).path
     splitted_filepath = os.path.splitext(url_filepath)
-    filename = splitted_filepath[0].split('/')[-1] + splitted_filepath[1]
+    filename = str(splitted_filepath[0].split('/')[-1] + splitted_filepath[1])
     decoded_filename = unquote(filename)
     return decoded_filename
 
 
-def parse_book_page(response_content: str) -> dict:
+def parse_book_page(response_content: bytes) -> dict:
     """ Парсит контент страницы книги с сайта tululu.org. """
 
     soup = BeautifulSoup(response_content, 'lxml')
-    title, image_url, text_url = ('', '', '')
-    comments, genres = [], []
 
-    if title_tag := soup.find('div', id='content').find('h1'):
-        title = title_tag.text.split('::')[0].strip()
+    h1 = soup.select_one("#content h1")
+    title, author = [x.strip() for x in h1.text.split('::')]
 
-    if text_url_tag := soup.find('table', class_='d_book').find('a', text='скачать txt'):
-        text_url = text_url_tag['href']
+    text_url = ''
+    if text_url_tag := soup.select_one('table.d_book').find('a', text='скачать txt'):
+        text_url = text_url_tag.get('href')
 
-    if image_url_tag := soup.find('div', class_='bookimage').find('img'):
-        image_url = image_url_tag['src']
+    image_url = soup.select_one('div.bookimage img').get('src')
 
-    if comments_tags := soup.find_all('div', class_='texts'):
-        comments = [tag.find('span', class_='black').text for tag in comments_tags]
+    comments_tags = soup.select("#content .texts")
+    comments = [tag.select_one(selector=".black").text for tag in comments_tags]
 
-    if genres_span_tag := soup.find('span', class_='d_book'):
-        genres = [tag.text for tag in genres_span_tag.find_all('a')]
+    genres_tags = soup.select("#content span.d_book a")
+    genres = [tag.text for tag in genres_tags]
 
-    return {'title': title, 'text_url': text_url, 'image_url': image_url,
+    return {'title': title, 'author': author,
+            'text_url': text_url, 'image_url': image_url,
             'comments': comments, 'genres': genres}
-
-
-def read_html_page(url: str) -> str:
-    """ Читает html-страницу и возвращает response.content. """
-
-    response = requests.get(url)
-    response.raise_for_status()
-
-    try:
-        check_for_redirect(response)
-        return response.content
-    except requests.HTTPError:
-        return ''
 
 
 def main():
