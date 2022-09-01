@@ -38,19 +38,14 @@ def create_parser():
     return parser
 
 
-def download_book(book_id: int):
+def download_book(book_id: int, book_url: str):
     """ Загружает текст и картинку обложки указанной книги с сайта tululu.org. """
 
-    book_url = f'https://tululu.org/b{book_id}/'
     response = requests.get(book_url)
     response.raise_for_status()
     check_for_redirect(response)
 
-    try:
-        book_details = parse_book_page(response.content)
-    except AttributeError:
-        logger.warning(f'Не удалось распарсить страницу {book_url} книги с номером {book_id}.')
-        return
+    book_details = parse_book_page(response.content)
 
     title = book_details.get('title')
     text_url = book_details.get('text_url')
@@ -77,9 +72,13 @@ def download_books(start_id: int, end_id: int):
     """ Загружает тексты и картинки обложек книг с сайта tululu.org. """
 
     for book_id in range(start_id, end_id+1):
+        book_url = f'https://tululu.org/b{book_id}/'
         while True:
             try:
-                download_book(book_id)
+                download_book(book_id, book_url)
+            except AttributeError:
+                logger.warning(f'Не удалось распарсить страницу {book_url} '
+                               f'книги с номером {book_id}.')
             except requests.HTTPError:
                 logger.warning(
                     'Возникла ошибка HTTPError. '
