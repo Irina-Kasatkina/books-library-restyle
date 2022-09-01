@@ -1,4 +1,5 @@
 import argparse
+import logging
 import os
 from pathlib import Path
 import sys
@@ -8,6 +9,11 @@ from urllib.parse import unquote, urljoin, urlsplit
 from bs4 import BeautifulSoup
 from pathvalidate import sanitize_filename
 import requests
+
+
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.WARNING)
+logging.basicConfig(filename='library-restyle.log', filemode='w')
 
 
 def check_for_redirect(response):
@@ -43,7 +49,7 @@ def download_book(book_id: int):
     try:
         book_details = parse_book_page(response.content)
     except AttributeError:
-        print(f'Не удалось распарсить страницу {book_url} книги с номером {book_id}.')
+        logger.warning(f'Не удалось распарсить страницу {book_url} книги с номером {book_id}.')
         return
 
     title = book_details.get('title')
@@ -54,10 +60,9 @@ def download_book(book_id: int):
         text_folder = 'books/'
         download_file(text_url, text_filename, text_folder)
     else:
-        print(
+        logger.warning(
             f'Книга с номером {book_id} ("{title}") не загружена, '
-            'так как на сайте её текст отсутствует.',
-            file=sys.stderr
+            'так как на сайте её текст отсутствует.'
         )
 
     image_url = book_details.get('image_url')
@@ -76,16 +81,14 @@ def download_books(start_id: int, end_id: int):
             try:
                 download_book(book_id)
             except requests.HTTPError:
-                print(
+                logger.warning(
                     'Возникла ошибка HTTPError. '
-                    f'Возможно, книга c номером {book_id} отсутствует на сайте.',
-                    file=sys.stderr
+                    f'Возможно, книга c номером {book_id} отсутствует на сайте.'
                 )
             except requests.exceptions.ConnectionError:
-                print(
+                logger.warning(
                     f'При загрузке книги с номером {book_id} '
-                    'возникла ошибка соединения с сайтом.',
-                    file=sys.stderr
+                    'возникла ошибка соединения с сайтом.'
                 )
                 time.sleep(30)
                 continue
