@@ -6,7 +6,7 @@ from urllib.parse import urljoin
 from bs4 import BeautifulSoup
 import requests
 
-from parse_tululu_book import check_for_redirect, download_books
+from parse_tululu_books import check_for_redirect, download_books
 
 
 logger = logging.getLogger(__file__)
@@ -23,21 +23,20 @@ def create_parser():
                         'а обложки книг в подпапку images '
                         'для книг из каталога "Научная фантастика".'
     )
-    parser.add_argument(
-        '-s', 
-        '--start_page', 
-        type=int, 
-        default=1,
-        help='номер страницы каталога "Научная фантастика", '
-             'начиная с которой происходит скачивание'
-    )
-    parser.add_argument(
-        '-e', 
-        '--end_page', 
-        type=int, 
-        default=0,
-        help='номер страницы каталога "Научная фантастика", '
-             'заканчивая которой происходит скачивание')
+    parser.add_argument('-s', '--start_page', type=int, default=1,
+                        help='номер страницы каталога "Научная фантастика", '
+                             'начиная с которой происходит скачивание')
+    parser.add_argument('-e', '--end_page', type=int, default=0,
+                        help='номер страницы каталога "Научная фантастика", '
+                             'заканчивая которой происходит скачивание')
+    parser.add_argument('-d', '--dest_folder', type=str, default='',
+                        help='путь к каталогу, в который происходит скачивание')
+    parser.add_argument('-t', '--skip_txt', action='store_true',
+                        help='не скачивать тексты книг')
+    parser.add_argument('-i', '--skip_imgs', action='store_true',
+                        help='не скачивать картинки обложек книг')
+    parser.add_argument('-j', '--json_path', type=str, default='',
+                        help='путь к json-файлу с результатами скачивания')
     return parser
 
 
@@ -64,7 +63,7 @@ def get_books_urls(start_page, end_page):
     """ Получает полные url книг из указанного диапазона страниц каталога фантастики. """
 
     books_urls = []
-    for page_number in range (start_page, end_page+1):
+    for page_number in range(start_page, end_page+1):
         try:
             category_page_url = f'https://tululu.org/l55/{page_number}/'
             page_books_urls = get_page_books_urls(category_page_url)
@@ -104,9 +103,11 @@ def main():
         end_page = start_page
 
     books_urls = get_books_urls(start_page, end_page)
-    books_details = download_books(books_urls)
+    books_details = download_books(books_urls, dest_folder=args.dest_folder,
+                                   skip_txt=args.skip_txt, skip_imgs=args.skip_imgs)
 
-    with open("books_details.json", "w", encoding='utf8') as json_file:
+    json_path = args.json_path if args.json_path else 'books_details.json'
+    with open(json_path, 'w', encoding='utf8') as json_file:
         json.dump(books_details, json_file, ensure_ascii=False, indent=4)
 
 
