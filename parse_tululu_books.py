@@ -149,7 +149,6 @@ def parse_book_page(response_content: bytes) -> dict:
     title, author = [x.strip() for x in h1.text.split('::')]
 
     text_url = ''
-    # TODO: Убрать find
     if text_url_tag := soup.select_one('table.d_book').find('a', text='скачать txt'):
         text_url = text_url_tag.get('href')
 
