@@ -1,7 +1,7 @@
 import argparse
 import logging
 import os
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 import sys
 import time
 from urllib.parse import unquote, urljoin, urlsplit
@@ -11,16 +11,10 @@ from pathvalidate import sanitize_filename
 import requests
 
 
-logger = logging.getLogger(__name__)
-logger.setLevel(logging.WARNING)
-logging.basicConfig(filename='library-restyle.log', filemode='w')
+logger = logging.getLogger(__file__)
 
 
-def check_for_redirect(response):
-    """ Поднимает исключение, если при requests-запросе происходит редирект. """
-
-    if response.history:
-        raise requests.HTTPError()
+QUERY_TIMEOUT = 30
 
 
 def create_parser():
@@ -38,7 +32,14 @@ def create_parser():
     return parser
 
 
-def download_book(book_id: int, book_url: str):
+def check_for_redirect(response):
+    """ Поднимает исключение, если при requests-запросе происходит редирект. """
+
+    if response.history:
+        raise requests.HTTPError()
+
+
+def download_book(book_url):
     """ Загружает текст и картинку обложки указанной книги с сайта tululu.org. """
 
     response = requests.get(book_url)
@@ -48,34 +49,49 @@ def download_book(book_id: int, book_url: str):
     book_details = parse_book_page(response.content)
 
     title = book_details.get('title')
+    book_id = urlsplit(book_url).path.strip('/').strip('b')
     text_url = book_details.get('text_url')
-    if text_url:
-        text_url = urljoin(book_url, text_url)
-        text_filename = f'{book_id}. {title}.txt'
-        text_folder = 'books/'
-        download_file(text_url, text_filename, text_folder)
-    else:
+
+    if not text_url:
         logger.warning(
             f'Книга с номером {book_id} ("{title}") не загружена, '
             'так как на сайте её текст отсутствует.'
         )
+        return None
 
-    image_url = book_details.get('image_url')
-    if image_url:
-        image_url = urljoin(book_url, image_url)
-        image_filename = get_filename_from_url(image_url)
-        image_folder = 'images/'
-        download_file(image_url, image_filename, image_folder)
+    text_url = urljoin(book_url, text_url)
+    text_filename = f'{book_id}. {title}.txt'
+    text_folder = 'books'
+    text_filename = download_file(text_url, text_filename, text_folder)
+
+    img_src = book_details.get('img_src')
+    if img_src:
+        img_src = urljoin(book_url, img_src)
+        img_filename = get_filename_from_url(img_src)
+        img_folder = 'images'
+        img_filename = download_file(img_src, img_filename, img_folder)
+
+    return {
+        'title': book_details['title'],
+        'author': book_details['author'],
+        'img_src':  str(PurePosixPath(img_folder) / img_filename) if img_src else '',
+        'book_path':  str(PurePosixPath(text_folder) / text_filename),
+        'comments': book_details['comments'],
+        'genres': book_details['genres']
+    }
 
 
-def download_books(start_id: int, end_id: int):
+def download_books(books_urls):
     """ Загружает тексты и картинки обложек книг с сайта tululu.org. """
 
-    for book_id in range(start_id, end_id+1):
-        book_url = f'https://tululu.org/b{book_id}/'
+    books_details = []
+    for book_url in books_urls:
+        book_id = urlsplit(book_url).path.strip('/').strip('b')
         while True:
             try:
-                download_book(book_id, book_url)
+                book_details = download_book(book_url)
+                if book_details:
+                   books_details.append(book_details)
             except AttributeError:
                 logger.warning(f'Не удалось распарсить страницу {book_url} '
                                f'книги с номером {book_id}.')
@@ -89,12 +105,13 @@ def download_books(start_id: int, end_id: int):
                     f'При загрузке книги с номером {book_id} '
                     'возникла ошибка соединения с сайтом.'
                 )
-                time.sleep(30)
+                time.sleep(QUERY_TIMEOUT)
                 continue
             break
+    return books_details
 
 
-def download_file(url: str, filename: str, folder: str):
+def download_file(url, filename, folder):
     """ Скачивает файл с указанным url на локальный диск. """
 
     response = requests.get(url)
@@ -105,9 +122,12 @@ def download_file(url: str, filename: str, folder: str):
     dirpath = Path.cwd() / folder
     Path(dirpath).mkdir(parents=True, exist_ok=True)
 
-    filepath = dirpath / sanitize_filename(filename)
+    filename = sanitize_filename(filename)
+    filepath = dirpath / filename
     with open(filepath, "wb") as file:
         file.write(response.content)
+
+    return filename
 
 
 def get_filename_from_url(url):
@@ -129,10 +149,11 @@ def parse_book_page(response_content: bytes) -> dict:
     title, author = [x.strip() for x in h1.text.split('::')]
 
     text_url = ''
+    # TODO: Убрать find
     if text_url_tag := soup.select_one('table.d_book').find('a', text='скачать txt'):
         text_url = text_url_tag.get('href')
 
-    image_url = soup.select_one('div.bookimage img').get('src')
+    img_src = soup.select_one('div.bookimage img').get('src')
 
     comments_tags = soup.select("#content .texts")
     comments = [tag.select_one(selector=".black").text for tag in comments_tags]
@@ -141,11 +162,14 @@ def parse_book_page(response_content: bytes) -> dict:
     genres = [tag.text for tag in genres_tags]
 
     return {'title': title, 'author': author,
-            'text_url': text_url, 'image_url': image_url,
+            'img_src': img_src, 'text_url': text_url, 
             'comments': comments, 'genres': genres}
 
 
 def main():
+    logger.setLevel(logging.WARNING)
+    logging.basicConfig(filename='library-restyle.log', filemode='w')
+
     parser = create_parser()
     args = parser.parse_args()
 
@@ -158,7 +182,8 @@ def main():
     else:
         end_id = start_id
 
-    download_books(start_id, end_id)
+    books_urls = [f'https://tululu.org/b{book_id}/' for book_id in range(start_id, end_id+1)]
+    download_books(books_urls)
 
 
 if __name__ == '__main__':

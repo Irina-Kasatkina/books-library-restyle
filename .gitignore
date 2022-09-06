@@ -140,3 +140,5 @@ cython_debug/
 # This project
 books/
 images/
+start.bat
+books_details.json
