@@ -3,7 +3,6 @@ import json
 import logging
 import os
 from pathlib import Path, PurePosixPath
-import sys
 import time
 from urllib.parse import unquote, urljoin, urlsplit
 
