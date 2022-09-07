@@ -1,6 +1,7 @@
 import argparse
 import json
 import logging
+import time
 from urllib.parse import urljoin
 
 from bs4 import BeautifulSoup
