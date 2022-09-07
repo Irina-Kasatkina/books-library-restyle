@@ -59,33 +59,32 @@ def download_book(book_url, dest_folder='', skip_txt=False, skip_imgs=False):
 
     book_details = parse_book_page(response.content)
     title = book_details.get('title')
+    book_id = urlsplit(book_url).path.strip('/').strip('b')
+    text_url = book_details.get('text_url')
 
     book_path = ''
-    if not skip_txt:
-        book_id = urlsplit(book_url).path.strip('/').strip('b')
-        text_url = book_details.get('text_url')
+    if not skip_txt and text_url:
+        text_url = urljoin(book_url, text_url)
+        text_filename = f'{title}.txt'
+        text_folder = 'books'
+        text_filename = download_file(text_url, dest_folder, text_folder, text_filename)
+        book_path = str(PurePosixPath(text_folder) / text_filename)
 
-        if text_url:
-            text_url = urljoin(book_url, text_url)
-            text_filename = f'{title}.txt'
-            text_folder = 'books'
-            text_filename = download_file(text_url, dest_folder, text_folder, text_filename)
-            book_path = str(PurePosixPath(text_folder) / text_filename)
-        else:
-            logger.warning(
-                f'Книга с номером {book_id} ("{title}") не загружена, '
-                'так как на сайте её текст отсутствует.'
-            )
+    if not skip_txt and not text_url:
+        logger.warning(
+            f'Книга с номером {book_id} ("{title}") не загружена, '
+            'так как на сайте её текст отсутствует.'
+        )
 
     img_src = ''
-    if not skip_imgs:
-        img_url = book_details.get('img_url')
-        if img_url:
-            img_url = urljoin(book_url, img_url)
-            img_filename = get_filename_from_url(img_url)
-            img_folder = 'images'
-            img_filename = download_file(img_url, dest_folder, img_folder, img_filename)
-            img_src = str(PurePosixPath(img_folder) / img_filename)
+    img_url = book_details.get('img_url')
+
+    if not skip_imgs and img_url:
+        img_url = urljoin(book_url, img_url)
+        img_filename = get_filename_from_url(img_url)
+        img_folder = 'images'
+        img_filename = download_file(img_url, dest_folder, img_folder, img_filename)
+        img_src = str(PurePosixPath(img_folder) / img_filename)
 
     return {
         'title': book_details['title'],
