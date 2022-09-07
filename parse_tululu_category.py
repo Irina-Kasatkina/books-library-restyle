@@ -76,7 +76,7 @@ def get_books_urls(start_page, end_page):
     return books_urls
 
 
-def parse_category_page(response_content: bytes) -> dict:
+def parse_category_page(response_content):
     """ Парсит контент страницы категории книг с сайта tululu.org. """
 
     soup = BeautifulSoup(response_content, 'lxml')
